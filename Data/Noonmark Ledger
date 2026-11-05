@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noonmark Ledger</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif&display=swap">
+<style>
+/* Layout concept: a ruled ledger sheet. One masthead, then hairline-ruled sections that each carry a data-status tag.
+   Brass marks are project data. Grey hatched marks and rows are sample data. Record panels share one filter row. */
+:root{
+  --ground:#F4F3EF; --surface:#FFFFFF; --sunken:#EEEDE8;
+  --ink:#17191C; --ink-2:#4A4D52; --muted:#62666C;
+  --rule:#E3E1DA; --rule-2:#CFCCC2;
+  --brass:#B08A45; --brass-text:#886844; --brass-wash:rgba(176,138,69,.12);
+  --sample:#5E6A78; --sample-mark:#7C8896; --hatch:rgba(94,106,120,.16);
+  --fail:#B33A3A;
+  --shadow:rgba(23,25,28,.22);
+  --ease:cubic-bezier(.2,.7,.2,1); --dur:180ms;
+  --f-display:"Instrument Serif","Iowan Old Style",Georgia,serif;
+  --f-ui:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#121417; --surface:#1A1D21; --sunken:#202429;
+    --ink:#ECEAE4; --ink-2:#B9B7B0; --muted:#8E9399;
+    --rule:#272A2E; --rule-2:#353A3F;
+    --brass:#C9A25E; --brass-text:#D6B36F; --brass-wash:rgba(201,162,94,.14);
+    --sample:#A3AEBB; --sample-mark:#6D7783; --hatch:rgba(163,174,187,.16);
+    --fail:#E26A6A; --shadow:rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121417; --surface:#1A1D21; --sunken:#202429;
+  --ink:#ECEAE4; --ink-2:#B9B7B0; --muted:#8E9399;
+  --rule:#272A2E; --rule-2:#353A3F;
+  --brass:#C9A25E; --brass-text:#D6B36F; --brass-wash:rgba(201,162,94,.14);
+  --sample:#A3AEBB; --sample-mark:#6D7783; --hatch:rgba(163,174,187,.16);
+  --fail:#E26A6A; --shadow:rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scrollbar-color:var(--rule-2) transparent;scroll-behavior:smooth}
+body{margin:0;background:var(--ground);color:var(--ink);font:14px/1.55 var(--f-ui);-webkit-font-smoothing:antialiased}
+::selection{background:var(--brass-wash);color:var(--ink)}
+::-webkit-scrollbar{height:10px;width:10px}
+::-webkit-scrollbar-thumb{background:var(--rule-2);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:2px}
+a{color:var(--brass-text);text-underline-offset:3px}
+h1,h2,h3,p{margin:0}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1240px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.mono{font-family:var(--f-mono)}
+.eyebrow{font:500 11px/1.4 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass-text)}
+.hint{color:var(--muted);font-size:12.5px}
+
+/* masthead */
+.mast{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px 48px;align-items:end;padding-bottom:26px;border-bottom:1px solid var(--ink)}
+.mast h1{font:400 clamp(44px,7vw,76px)/.98 var(--f-display);letter-spacing:-.01em;margin:10px 0 14px;text-wrap:balance}
+.mast .sub{font-size:18px;line-height:1.45;color:var(--ink-2);max-width:46ch}
+.mast dl{margin:0;display:grid;grid-template-columns:auto auto;gap:6px 18px;font:400 12px/1.4 var(--f-mono);color:var(--ink-2)}
+.mast dt{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:10.5px;align-self:center}
+.mast dd{margin:0}
+.nav{display:flex;flex-wrap:wrap;gap:4px 22px;padding:12px 0;border-bottom:1px solid var(--rule-2);font-size:13px}
+.nav a{color:var(--ink-2);text-decoration:none;padding:4px 0;border-bottom:1px solid transparent;transition:color var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+.nav a:hover{color:var(--brass-text);border-color:var(--brass)}
+
+/* about + status */
+.about{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:28px 56px;margin-top:30px}
+.about p{max-width:62ch;color:var(--ink-2);font-size:15px;line-height:1.6}
+.about p+p{margin-top:12px}
+.status{border:1px solid var(--rule-2);background:var(--surface);border-radius:4px;padding:16px 18px;align-self:start}
+.status h2{font:500 11px/1.4 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink);margin-bottom:8px}
+.status p{font-size:13px;line-height:1.55;color:var(--ink-2)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;padding-top:12px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.sw{width:22px;height:10px;border-radius:0 3px 3px 0;background:var(--brass)}
+.sw.sample{background:var(--sample-mark) repeating-linear-gradient(135deg,rgba(255,255,255,.3) 0 2px,transparent 2px 6px)}
+
+/* sections */
+.sheet{margin-top:60px;scroll-margin-top:16px}
+.sheet-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:10px 20px;border-bottom:1px solid var(--rule-2);padding-bottom:10px;margin-bottom:18px}
+.sheet-head h2{font:400 clamp(28px,4vw,38px)/1.1 var(--f-display);letter-spacing:-.005em}
+.sheet-head p{color:var(--ink-2);max-width:60ch;margin-top:6px;font-size:14px}
+.tag{display:inline-block;font:500 10.5px/1 var(--f-mono);letter-spacing:.07em;text-transform:uppercase;padding:4px 8px;border-radius:99px;border:1px solid;white-space:nowrap}
+.tag.project{color:var(--brass-text);border-color:color-mix(in srgb,var(--brass) 55%,transparent)}
+.tag.sample{color:var(--sample);border-color:color-mix(in srgb,var(--sample-mark) 55%,transparent);background:repeating-linear-gradient(135deg,var(--hatch) 0 1px,transparent 1px 5px)}
+
+/* key figures */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--rule-2);border:1px solid var(--rule-2);border-radius:4px;overflow:hidden}
+.tile{background:var(--surface);padding:20px 22px 18px;display:flex;flex-direction:column;gap:2px}
+.tile .k{color:var(--ink-2);font-size:13px}
+.tile .v{font-size:46px;font-weight:600;line-height:1.1;letter-spacing:-.02em;color:var(--ink)}
+.tile .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+.tile .src{margin-top:12px;font:400 10.5px/1.3 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--brass-text)}
+
+/* panels, grid */
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:18px}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:20px 22px;min-width:0}
+.panel h3{font:600 15px/1.35 var(--f-ui);margin-bottom:2px}
+.panel .csub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+.c7{grid-column:span 7}.c5{grid-column:span 5}.c6{grid-column:span 6}.c12{grid-column:span 12}
+
+/* bar charts */
+.chart{position:relative;--lw:200px}
+.plot{position:relative;padding-top:22px}
+.gridlayer{position:absolute;inset:0 0 0 var(--lw);pointer-events:none}
+.gl{position:absolute;top:22px;bottom:0;width:1px;background:var(--rule)}
+.floor{position:absolute;top:18px;bottom:0;width:2px;margin-left:-1px;background:var(--ink-2)}
+.floor-label{position:absolute;top:0;transform:translateX(-50%);font:500 10.5px/1.2 var(--f-mono);letter-spacing:.05em;color:var(--ink);white-space:nowrap;background:var(--surface);padding:0 4px}
+.brow{position:relative;z-index:1;display:grid;grid-template-columns:var(--lw) minmax(0,1fr);align-items:center;min-height:42px;border-radius:2px}
+.brow:hover .bar{filter:brightness(1.1)}
+.blabel{padding-right:12px;line-height:1.3;background:var(--surface);position:relative}
+.blabel b{display:block;font-weight:500;font-size:13px;color:var(--ink)}
+.bsub{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.bsub .ic{display:inline-flex}
+.btrack{position:relative;height:42px}
+.bar{position:absolute;left:0;top:50%;height:18px;margin-top:-9px;border-radius:0 4px 4px 0;background:var(--brass);transition:width var(--dur) var(--ease)}
+.bar.fail{background:var(--fail)}
+.bar.sample{background:var(--sample-mark) repeating-linear-gradient(135deg,rgba(255,255,255,.32) 0 2px,transparent 2px 6px)}
+.bval{position:absolute;top:50%;transform:translateY(-50%);margin-left:4px;padding:0 4px;background:var(--surface);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.axis{position:relative;height:22px;margin-left:var(--lw);border-top:1px solid var(--rule-2)}
+.axis span{position:absolute;top:4px;transform:translateX(-50%);font:400 11px/1 var(--f-mono);color:var(--muted)}
+.axis span:first-child{transform:none}
+details.twin{margin-top:14px;border-top:1px solid var(--rule);padding-top:10px}
+details.twin summary{cursor:pointer;font-size:12.5px;color:var(--brass-text);width:max-content}
+details.twin table{margin-top:10px;min-width:0}
+
+/* contrast checker */
+.checker{display:grid;gap:14px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field label{display:block;font:500 10.5px/1.3 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.field .in{display:flex;border:1px solid var(--rule-2);border-radius:3px;background:var(--surface);overflow:hidden}
+.field input[type=color]{width:38px;height:36px;border:0;padding:3px;background:transparent;cursor:pointer;flex:none}
+.field input[type=text]{width:100%;min-width:0;border:0;border-left:1px solid var(--rule);padding:0 10px;font:400 13px var(--f-mono);background:transparent;text-transform:uppercase}
+.field .in:focus-within{outline:2px solid var(--ink);outline-offset:1px}
+.field input:focus-visible{outline:none}
+.readout{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.readout .big{font-size:46px;font-weight:600;letter-spacing:-.02em;line-height:1.05}
+.verdicts{display:grid;gap:6px}
+.verdict{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}
+.verdict .ic{display:inline-flex;color:var(--brass-text)}
+.verdict.no .ic{color:var(--fail)}
+.preview{border:1px solid var(--rule-2);border-radius:3px;padding:16px 18px;font-size:16px;line-height:1.4;min-height:56px;display:flex;align-items:center}
+.presets{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--rule-2);background:var(--surface);border-radius:3px;padding:6px 10px;font-size:12.5px;cursor:pointer;transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease)}
+.chip:hover{border-color:var(--brass)}
+
+/* filter row */
+.filters{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;padding:14px 0;border-block:1px solid var(--rule-2);margin-top:60px;scroll-margin-top:16px}
+.filters .lead{font:500 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.search{position:relative}
+.search input{width:250px;max-width:100%;height:36px;border:1px solid var(--rule-2);border-radius:3px;padding:0 12px;background:var(--surface)}
+.seg{display:inline-flex;border:1px solid var(--rule-2);border-radius:3px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:0 13px;height:34px;cursor:pointer;font-size:13px;color:var(--ink-2);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button:hover{background:var(--sunken)}
+.seg button[aria-pressed="true"]{background:color-mix(in srgb,var(--brass) 10%,var(--surface));color:var(--brass-text);font-weight:600}
+select{height:36px;border:1px solid var(--rule-2);border-radius:3px;padding:0 10px;background:var(--surface);cursor:pointer}
+.reset{border:0;background:none;color:var(--brass-text);cursor:pointer;padding:6px 2px;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.count{margin-left:auto;font:400 12px/1.3 var(--f-mono);color:var(--ink-2)}
+
+/* tables */
+.tscroll{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:720px}
+th{font:500 10.5px/1.3 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 14px;background:var(--sunken);white-space:nowrap}
+td{padding:11px 14px;border-top:1px solid var(--rule);vertical-align:baseline}
+#fbTbl{min-width:560px}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.is-sample td{background-image:repeating-linear-gradient(135deg,var(--hatch) 0 1px,transparent 1px 8px)}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background-color:color-mix(in srgb,var(--brass) 7%,transparent)}
+.area{font:400 11.5px/1.3 var(--f-mono);color:var(--ink-2);white-space:nowrap}
+.val{font-weight:600}
+.rowbtn{all:unset;cursor:pointer;color:var(--ink);font-weight:500;border-bottom:1px solid var(--rule-2)}
+.rowbtn:hover{color:var(--brass-text);border-color:var(--brass)}
+.rowbtn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.empty{padding:26px 22px;color:var(--ink-2);max-width:60ch}
+.empty b{display:block;font:400 22px/1.2 var(--f-display);color:var(--ink);margin-bottom:4px}
+
+/* drawer */
+#veil{position:fixed;inset:0;background:var(--shadow);z-index:40;opacity:0;transition:opacity var(--dur) var(--ease)}
+#veil.open{opacity:1}
+#drawer{position:fixed;top:0;right:0;bottom:0;width:min(540px,100vw);background:var(--surface);z-index:41;border-left:1px solid var(--rule-2);overflow:auto;transform:translateX(100%);transition:transform var(--dur) var(--ease);padding-bottom:env(safe-area-inset-bottom,0px)}
+#drawer.open{transform:none}
+.dhead{display:flex;justify-content:space-between;gap:16px;align-items:start;padding:22px 24px 16px;border-bottom:1px solid var(--rule-2);position:sticky;top:0;background:var(--surface)}
+.dhead h3{font:400 28px/1.15 var(--f-display);margin-top:6px}
+.dclose{border:1px solid var(--rule-2);background:var(--surface);width:40px;height:40px;border-radius:3px;cursor:pointer;font-size:16px;flex:none}
+.dclose:hover{border-color:var(--brass)}
+.dbody{padding:8px 24px 28px}
+.dbody .note{margin:14px 0 0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--sample-mark) 50%,transparent);background:repeating-linear-gradient(135deg,var(--hatch) 0 1px,transparent 1px 7px);font-size:13px;color:var(--ink-2);border-radius:3px}
+.dsec{padding:16px 0;border-bottom:1px solid var(--rule)}
+.dsec:last-child{border-bottom:0}
+.dsec h4{margin:0 0 6px;font:500 10.5px/1.3 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass-text)}
+.dsec p{font-size:14.5px;line-height:1.6;color:var(--ink)}
+.dsrc{margin-top:16px;font:400 11.5px/1.5 var(--f-mono);color:var(--muted)}
+
+/* tooltip */
+#tip{position:fixed;z-index:60;pointer-events:none;background:var(--ink);color:var(--ground);padding:8px 11px;border-radius:3px;font-size:12.5px;line-height:1.4;max-width:260px;box-shadow:0 6px 20px var(--shadow)}
+#tip .tv{font-size:15px;font-weight:600}
+#tip .tl{opacity:.85}
+
+footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--ink);display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px 56px;color:var(--ink-2);font-size:13px}
+footer p{max-width:64ch}
+footer details summary{cursor:pointer;color:var(--brass-text)}
+footer code{font:400 12px var(--f-mono);background:var(--sunken);padding:1px 5px;border-radius:2px}
+
+@media (max-width:900px){
+  .c7,.c5,.c6{grid-column:span 12}
+  .about,footer{grid-template-columns:minmax(0,1fr)}
+  .mast{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:560px){
+  /* phone: label sits above its bar; the label band masks the gridlines behind it */
+  .chart{--lw:0px!important}
+  .brow{grid-template-columns:minmax(0,1fr)}
+  .blabel{padding:8px 0 0}
+  .btrack{height:30px}
+  .pair{grid-template-columns:1fr}
+  .count{margin-left:0;width:100%}
+  .tile .v{font-size:40px}
+  .panel{padding:16px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+
+<header class="mast">
+  <div>
+    <div class="eyebrow">Sovereign Atelier · Noonmark 0.2.1 · Android</div>
+    <h1>Noonmark Ledger</h1>
+    <p class="sub">Release gates, tests, decisions and alpha feedback for a task list that keeps every task on the phone.</p>
+  </div>
+  <dl>
+    <dt>Maintainer</dt><dd>David Ngunjiri</dd>
+    <dt>Data as of</dt><dd>5 Nov 2026</dd>
+    <dt>Stack</dt><dd>Flutter · Dart · SQLite</dd>
+    <dt>Release build</dt><dd>0 requests · 0 permissions</dd>
+  </dl>
+</header>
+
+<nav class="nav" aria-label="Sections">
+  <a href="#figures">Key figures</a>
+  <a href="#contrast">Contrast floor</a>
+  <a href="#records">Filters</a>
+  <a href="#gates">Release gates</a>
+  <a href="#tests">Test suite</a>
+  <a href="#decisions">Decision log</a>
+  <a href="#alpha">Alpha ledger</a>
+</nav>
+
+<section class="about" aria-labelledby="aboutT">
+  <div>
+    <h2 class="eyebrow" id="aboutT" style="margin-bottom:10px">About this ledger</h2>
+    <p>Noonmark sorts tasks into Overdue, Today, Upcoming and Anytime, stores them in a private database on the phone, and asks Android for nothing. This ledger gathers the quality record behind that: the release gates the app is held to, the automated tests, the written decisions, and feedback from the closed-testing alpha.</p>
+    <p>Use the filters to narrow the record panels by area, by search term, or by data status. The decision log opens each entry in full, with the alternatives that were rejected and the condition that would reverse it.</p>
+  </div>
+  <aside class="status" aria-labelledby="statusT">
+    <h2 id="statusT">Status of the figures</h2>
+    <p id="statusText"></p>
+    <div class="legend">
+      <span><i class="sw"></i>Project data</span>
+      <span><i class="sw sample"></i>Sample data</span>
+    </div>
+  </aside>
+</section>
+
+<section class="sheet" id="figures" aria-labelledby="figT">
+  <div class="sheet-head">
+    <div><h2 id="figT">Key figures</h2><p>Four numbers the release build is held to.</p></div>
+    <span class="tag project">Project data</span>
+  </div>
+  <div class="tiles">
+    <div class="tile"><span class="k">Automated tests</span><span class="v">15</span><span class="s">task-day sorting, backup-file checks, accent contrast</span><span class="src">Product page</span></div>
+    <div class="tile"><span class="k">Libraries</span><span class="v">3</span><span class="s">a new one needs a written decision first; 3 unused removed</span><span class="src">Product page</span></div>
+    <div class="tile"><span class="k">Android permissions</span><span class="v">0</span><span class="s">none requested by the release build</span><span class="src">Product page</span></div>
+    <div class="tile"><span class="k">Network requests</span><span class="v">0</span><span class="s">none in the release build, no sign-in, no server</span><span class="src">Product page</span></div>
+  </div>
+</section>
+
+<section class="sheet" id="contrast" aria-labelledby="conT">
+  <div class="sheet-head">
+    <div><h2 id="conT">Contrast floor</h2><p>Accent text has to reach 4.5:1 against its ground in light and in dark, and a test fails if it does not.</p></div>
+    <span class="tag project">Project data</span>
+  </div>
+  <div class="grid">
+    <div class="panel c7">
+      <h3>Accent text before and after the 29 Oct 2026 decision</h3>
+      <p class="csub">Contrast ratio, from the decision log. The line marks the 4.5:1 floor.</p>
+      <div id="contrastChart"></div>
+    </div>
+    <div class="panel c5">
+      <h3>Check a pair of colours</h3>
+      <p class="csub">The same WCAG 2 ratio, computed here in the page.</p>
+      <div class="checker">
+        <div class="pair">
+          <div class="field"><label for="fgHex">Text</label><div class="in"><input type="color" id="fgPick" value="#886844" aria-label="Pick text colour"><input type="text" id="fgHex" value="#886844" maxlength="7" spellcheck="false" autocomplete="off"></div></div>
+          <div class="field"><label for="bgHex">Ground</label><div class="in"><input type="color" id="bgPick" value="#ffffff" aria-label="Pick ground colour"><input type="text" id="bgHex" value="#FFFFFF" maxlength="7" spellcheck="false" autocomplete="off"></div></div>
+        </div>
+        <div class="readout"><span class="big" id="ratio" aria-live="polite">5.11:1</span></div>
+        <div class="verdicts" id="verdicts"></div>
+        <div class="preview" id="preview">A day is optional, and it is never a time.</div>
+        <div class="presets">
+          <button class="chip" type="button" data-fg="#886844" data-bg="#FFFFFF">886844 on white</button>
+          <button class="chip" type="button" data-fg="#856642" data-bg="#FFFFFF">856642 on white</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="filters" id="records" role="search" aria-label="Filter the record panels">
+  <span class="lead">Filter records</span>
+  <div class="search"><input id="q" type="search" placeholder="Search records" aria-label="Search the record panels"></div>
+  <div class="seg" role="group" aria-label="Data status" id="dataSeg">
+    <button type="button" data-v="all" aria-pressed="true">All data</button>
+    <button type="button" data-v="project" aria-pressed="false">Project data</button>
+    <button type="button" data-v="sample" aria-pressed="false">Sample data</button>
+  </div>
+  <select id="area" aria-label="Area"><option value="all">All areas</option></select>
+  <button class="reset" id="reset" type="button">Reset</button>
+  <span class="count" id="count" aria-live="polite"></span>
+</div>
+
+<section class="sheet" id="gates" style="margin-top:36px" aria-labelledby="gateT">
+  <div class="sheet-head">
+    <div><h2 id="gateT">Release gates</h2><p>What the release build promises, and what holds it to the promise.</p></div>
+    <span class="tag project">Project data</span>
+  </div>
+  <div class="tscroll"><table id="gateTbl"><thead><tr><th>Area</th><th>Gate</th><th>Measure</th><th>Basis</th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section class="sheet" id="tests" aria-labelledby="testT">
+  <div class="sheet-head">
+    <div><h2 id="testT">Test suite</h2><p>The suite totals 15 automated tests (project data). The split by area is sample until the project's test list is loaded.</p></div>
+    <span class="tag sample">Sample split</span>
+  </div>
+  <div class="panel c12" id="testPanel"><h3>Tests by area</h3><p class="csub">Number of tests, out of 15.</p><div id="testChart"></div></div>
+</section>
+
+<section class="sheet" id="decisions" aria-labelledby="decT">
+  <div class="sheet-head">
+    <div><h2 id="decT">Decision log</h2><p>Each entry records the choice, the alternatives rejected and the condition that would reverse it. Open a row to read it.</p></div>
+    <span class="tag project">1 project entry</span>
+  </div>
+  <div class="tscroll"><table id="decTbl"><thead><tr><th>Ref</th><th>Date</th><th>Area</th><th>Decision</th><th>Data</th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section class="sheet" id="alpha" aria-labelledby="alT">
+  <div class="sheet-head">
+    <div><h2 id="alT">Alpha ledger</h2><p>Closed testing on Google Play. Feedback arrives through a Google Form and is triaged into a tracking ledger. The rows below are sample.</p></div>
+    <span class="tag sample">Sample rows</span>
+  </div>
+  <div class="grid">
+    <div class="panel c5" id="fbPanel"><h3>Feedback by state</h3><p class="csub">Number of items.</p><div id="fbChart"></div></div>
+    <div class="c7" style="min-width:0"><div class="tscroll"><table id="fbTbl"><thead><tr><th>Ref</th><th>Type</th><th>Area</th><th>Summary</th><th>State</th></tr></thead><tbody></tbody></table></div></div>
+  </div>
+</section>
+
+<footer>
+  <div>
+    <p><strong>Sources.</strong> Project data comes from the published Noonmark page (<a href="https://sovereign-atelier.github.io" target="_blank" rel="noopener">sovereign-atelier.github.io</a>, read 5 November 2026) and from the maintainer's résumé of November 2026. Contrast ratios in the chart are the figures in the decision log excerpt on that page.</p>
+    <p style="margin-top:10px">The Noonmark source repository is not public. Test names, the full decision log and the alpha ledger rows are sample until the project's own files are loaded. Nothing here is a release claim beyond what the product page states.</p>
+  </div>
+  <div>
+    <details>
+      <summary>About the data</summary>
+      <p style="margin-top:8px">Every row carries a <code>data</code> field, either <code>"project"</code> or <code>"sample"</code>. The tags, the hatching, the counts and the filters all read from that field. To load real records, replace a row in the <code>DATA</code> block at the top of the page script and set its field to <code>"project"</code>.</p>
+    </details>
+  </div>
+</footer>
+
+</div>
+
+<div id="veil" hidden></div>
+<aside id="drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle" tabindex="-1" hidden>
+  <div class="dhead">
+    <div><div class="eyebrow" id="dKind"></div><h3 id="dTitle"></h3></div>
+    <button class="dclose" id="dClose" type="button" aria-label="Close entry">✕</button>
+  </div>
+  <div class="dbody" id="dBody"></div>
+</aside>
+<div id="tip" hidden><div class="tv"></div><div class="tl"></div></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- Data. Each row says what it is: data:"project" or data:"sample". ---------- */
+const DATA = {
+  asOf: '5 Nov 2026',
+  areas: ['Privacy','Accessibility','Data safety','Task days','Dependencies','Release'],
+  gates: [
+    {area:'Privacy', gate:'Network', measure:'None in the release build', basis:'Product page', data:'project'},
+    {area:'Privacy', gate:'Android permissions', measure:'None requested', basis:'Product page', data:'project'},
+    {area:'Privacy', gate:'Account and server', measure:'No sign-in, no server', basis:'Product page', data:'project'},
+    {area:'Privacy', gate:'Data collected', measure:'None. Not a little, not anonymous, not metadata', basis:'Product page', data:'project'},
+    {area:'Privacy', gate:'Where tasks live', measure:'A private database on the phone only', basis:'Product page', data:'project'},
+    {area:'Accessibility', gate:'Accent text contrast', measure:'4.5:1 or better, light and dark. A failing test enforces it', basis:'Product page', data:'project'},
+    {area:'Accessibility', gate:'Touch targets', measure:'48 dp on the gear, close and add-step buttons', basis:'Product page', data:'project'},
+    {area:'Accessibility', gate:'Motion', measure:'About 180 ms, eased out. Stops when the phone asks for reduced motion', basis:'Product page', data:'project'},
+    {area:'Data safety', gate:'Restore', measure:'Reads the whole backup file before it changes anything. A damaged file is refused and existing data stays untouched', basis:'Product page, résumé', data:'project'},
+    {area:'Data safety', gate:'Backup', measure:'A plain JSON file, saved where the user chooses', basis:'Product page', data:'project'},
+    {area:'Data safety', gate:'Delete', measure:'Swipe to delete, with five seconds to undo', basis:'Product page', data:'project'},
+    {area:'Dependencies', gate:'Libraries', measure:'Three. A new one needs a written decision first. Three unused ones were removed', basis:'Product page, résumé', data:'project'},
+    {area:'Task days', gate:'A task’s day', measure:'Optional, and never an hour', basis:'Product page', data:'project'},
+    {area:'Task days', gate:'Finished tasks', measure:'Leave the list the day after', basis:'Product page', data:'project'},
+    {area:'Release', gate:'Distribution', measure:'Google Play closed-testing alpha', basis:'Résumé', data:'project'},
+    {area:'Release', gate:'Build and signing', measure:'Kotlin DSL build configuration, release signing, database schema migrations', basis:'Résumé', data:'project'}
+  ],
+  contrast: [
+    {label:'Brass text on white',            sub:'Before', value:3.54, pass:false, note:'Read 3.54:1 on white, below the floor.'},
+    {label:'Brass text on page ground',      sub:'Before', value:3.19, pass:false, note:'Read 3.19:1 on the page ground, below the floor.'},
+    {label:'886844 on white',                sub:'Shipped', value:5.11, pass:true,  note:'The new text-only accent on white.'},
+    {label:'886844 on page ground',          sub:'Shipped', value:4.60, pass:true,  note:'The new text-only accent on the page ground.'},
+    {label:'856642 on page ground',          sub:'Fallback', value:4.76, pass:true,  note:'A heavier bronze kept as the fallback.'}
+  ],
+  tests: [
+    {area:'Task days',     label:'Task-day sorting',      count:6, data:'sample'},
+    {area:'Data safety',   label:'Backup-file checks',    count:5, data:'sample'},
+    {area:'Accessibility', label:'Accent-text contrast',  count:4, data:'sample'}
+  ],
+  decisions: [
+    {ref:'P1', date:'29 Oct 2026', area:'Accessibility', title:'Add a text-only accent colour', data:'project',
+     decision:'Add palette.accentText, used only for text. Light is 886844. Dark equals the dark accent. The brass stays for rules, icons, borders and cursors.',
+     reason:'Light-mode brass text read 3.54:1 on white and 3.19:1 on the page ground. 886844 reads 5.11:1 and 4.60:1.',
+     rejected:'Darkening the brass everywhere. Rejected, because it changes every rule and icon to fix text.',
+     fallback:'856642 for the text token. It reads 4.76:1 on the page ground and is a heavier bronze.',
+     reversal:'A scanner reads any text use below 4.5:1. Set the light accentText to 856642.',
+     source:'Decision log excerpt, Noonmark product page'},
+    {ref:'S1', date:null, area:'Dependencies', title:'Hold the library count at three', data:'sample',
+     decision:'A new library needs a written decision before it enters the project.',
+     reason:'Every dependency adds an update path and a risk the app has promised not to take.',
+     rejected:'Add libraries as needed and prune them later.',
+     reversal:'A needed capability cannot be written in a day without a library.'},
+    {ref:'S2', date:null, area:'Data safety', title:'Validate the whole backup before restoring', data:'sample',
+     decision:'Restore reads and checks the entire file, then writes.',
+     reason:'A half-applied restore is worse than a refused one.',
+     rejected:'Restore row by row and skip the bad rows.',
+     reversal:'Backups grow too large to hold in memory.'},
+    {ref:'S3', date:null, area:'Task days', title:'Store a day, never a time', data:'sample',
+     decision:'A task may carry a day. It never carries an hour.',
+     reason:'A time turns a list into a schedule of alarms.',
+     rejected:'An optional time with a reminder.',
+     reversal:'Reminders return as a requested feature and a way is found to keep zero permissions.'},
+    {ref:'S4', date:null, area:'Privacy', title:'Ship the release build without a network layer', data:'sample',
+     decision:'The release build contains no code that opens a connection.',
+     reason:'A build that cannot reach the network cannot send anything.',
+     rejected:'Network on, analytics off by a setting.',
+     reversal:'Sync becomes a product goal, as a separate opt-in edition.'},
+    {ref:'S5', date:null, area:'Release', title:'Open with a closed-testing alpha', data:'sample',
+     decision:'Publish to a small closed group before any wider release.',
+     reason:'A few testers find the rough edges before the public store does.',
+     rejected:'Open testing from the first build.',
+     reversal:'Alpha feedback stays quiet for two rounds.'}
+  ],
+  feedback: [
+    {ref:'F1', type:'Bug',      area:'Task days',     summary:'A task finished late in the evening leaves the list before the next day starts.', state:'New',      data:'sample'},
+    {ref:'F2', type:'Usability',area:'Data safety',   summary:'The undo bar is easy to miss on a small screen.',                              state:'Triaged',  data:'sample'},
+    {ref:'F3', type:'Request',  area:'Data safety',   summary:'Remind me to back up after a long gap.',                                       state:'Triaged',  data:'sample'},
+    {ref:'F4', type:'Bug',      area:'Accessibility', summary:'The gear button is not announced by the screen reader.',                       state:'Fixed',    data:'sample'},
+    {ref:'F5', type:'Usability',area:'Task days',     summary:'Unclear whether Anytime tasks can ever become overdue.',                       state:'Declined', data:'sample'},
+    {ref:'F6', type:'Request',  area:'Task days',     summary:'Let me reorder tasks by hand inside a day.',                                   state:'Declined', data:'sample'}
+  ]
+};
+const STATES = ['New','Triaged','Fixed','Declined'];
+
+/* ---------- Helpers ---------- */
+const $ = (s,r)=> (r||document).querySelector(s);
+function h(tag, props){
+  const n=document.createElement(tag);
+  if(props) for(const k in props){
+    if(k==='class') n.className=props[k];
+    else if(k==='text') n.textContent=props[k];
+    else n.setAttribute(k,props[k]);
+  }
+  for(let i=2;i<arguments.length;i++){
+    const c=arguments[i];
+    if(c==null||c===false) continue;
+    n.append(c.nodeType?c:document.createTextNode(String(c)));
+  }
+  return n;
+}
+const ICON={
+  ok:'<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  no:'<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+};
+function icon(k){ const s=h('span',{class:'ic'}); s.innerHTML=ICON[k]; return s; }
+function tag(data){ return h('span',{class:'tag '+data, text: data==='project'?'Project':'Sample'}); }
+function norm(s){ return String(s||'').toLowerCase(); }
+
+/* ---------- Tooltip (value leads, label follows) ---------- */
+const tip=$('#tip');
+function showTip(anchor, value, label, ev){
+  tip.querySelector('.tv').textContent=value;
+  tip.querySelector('.tl').textContent=label;
+  tip.hidden=false;
+  const r=tip.getBoundingClientRect();
+  let x,y;
+  if(ev && ev.clientX!=null && ev.type!=='focus'){ x=ev.clientX+14; y=ev.clientY+16; }
+  else { const a=anchor.getBoundingClientRect(); x=a.left+Math.min(a.width,260)/2; y=a.bottom+6; }
+  x=Math.max(8,Math.min(x,window.innerWidth-r.width-8));
+  if(y+r.height>window.innerHeight-8) y=Math.max(8,y-r.height-34);
+  tip.style.left=x+'px'; tip.style.top=y+'px';
+}
+function hideTip(){ tip.hidden=true; }
+
+/* ---------- Bar chart: div bars on one scale, value at the tip, table twin ---------- */
+function barChart(host, o){
+  host.replaceChildren();
+  const chart=h('div',{class:'chart',style:'--lw:'+(o.lw||'210px')});
+  const plot=h('div',{class:'plot'});
+  const grid=h('div',{class:'gridlayer','aria-hidden':'true'});
+  o.ticks.forEach(t=>grid.append(h('i',{class:'gl',style:'left:'+(t/o.max*100)+'%'})));
+  if(o.floor!=null){
+    grid.append(h('i',{class:'floor',style:'left:'+(o.floor/o.max*100)+'%'}));
+    grid.append(h('span',{class:'floor-label',style:'left:'+(o.floor/o.max*100)+'%',text:o.floorLabel}));
+  }
+  plot.append(grid);
+  o.rows.forEach(r=>{
+    const pct=r.value/o.max*100;
+    const label=h('div',{class:'blabel'}, h('b',{text:r.label}));
+    if(r.sub){
+      const sub=h('span',{class:'bsub'});
+      if(r.status) sub.append(icon(r.status==='ok'?'ok':'no'));
+      sub.append(document.createTextNode(r.sub));
+      label.append(sub);
+    }
+    const track=h('div',{class:'btrack'},
+      h('div',{class:'bar '+(r.mark||''),style:'width:'+pct+'%'}),
+      h('span',{class:'bval',style:'left:'+pct+'%',text:r.valueText}));
+    const row=h('div',{class:'brow',tabindex:'0',role:'group','aria-label':r.label+', '+r.valueText+(r.sub?', '+r.sub:'')}, label, track);
+    const move=e=>showTip(row,r.valueText,r.tip,e);
+    row.addEventListener('pointermove',move);
+    row.addEventListener('pointerleave',hideTip);
+    row.addEventListener('focus',e=>showTip(row,r.valueText,r.tip,e));
+    row.addEventListener('blur',hideTip);
+    plot.append(row);
+  });
+  chart.append(plot);
+  const axis=h('div',{class:'axis','aria-hidden':'true'});
+  o.ticks.forEach(t=>axis.append(h('span',{style:'left:'+(t/o.max*100)+'%',text:String(t)})));
+  chart.append(axis);
+  host.append(chart);
+  // table twin: every value reachable without hovering
+  const tbl=h('table',null,
+    h('thead',null,h('tr',null,...o.twinHead.map(t=>h('th',{text:t})))),
+    h('tbody',null,...o.rows.map(r=>h('tr',null,...r.twin.map((c,i)=>h('td',{text:c,class:i===1?'num':''}))))));
+  host.append(h('details',{class:'twin'},h('summary',{text:'Table view'}),h('div',{class:'tscroll'},tbl)));
+}
+
+/* ---------- Contrast (WCAG 2) ---------- */
+function parseHex(s){
+  s=String(s).trim().replace(/^#/,'');
+  if(/^[0-9a-f]{3}$/i.test(s)) s=s.split('').map(c=>c+c).join('');
+  return /^[0-9a-f]{6}$/i.test(s)?s.toUpperCase():null;
+}
+function lum(hex){
+  const ch=i=>{ const c=parseInt(hex.slice(i,i+2),16)/255; return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4); };
+  return 0.2126*ch(0)+0.7152*ch(2)+0.0722*ch(4);
+}
+function ratio(a,b){ const x=lum(a),y=lum(b); return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); }
+
+function renderContrastChart(){
+  barChart($('#contrastChart'),{
+    max:7, ticks:[0,1,2,3,4,5,6,7], floor:4.5, floorLabel:'4.5 floor', lw:'200px',
+    twinHead:['Pair','Ratio','Status'],
+    rows:DATA.contrast.map(c=>({
+      label:c.label, sub:c.sub+(c.pass?' · clears the floor':' · below the floor'), status:c.pass?'ok':'no',
+      value:c.value, valueText:c.value.toFixed(2)+':1', mark:c.pass?'':'fail',
+      tip:c.note, twin:[c.label+' ('+c.sub.toLowerCase()+')', c.value.toFixed(2)+':1', c.pass?'Clears 4.5:1':'Below 4.5:1']
+    }))
+  });
+}
+
+function wireChecker(){
+  const fgP=$('#fgPick'), fgH=$('#fgHex'), bgP=$('#bgPick'), bgH=$('#bgHex');
+  const out=$('#ratio'), ver=$('#verdicts'), pre=$('#preview');
+  function update(){
+    const fg=parseHex(fgH.value), bg=parseHex(bgH.value);
+    ver.replaceChildren();
+    if(!fg||!bg){
+      out.textContent='Not a colour';
+      ver.append(h('div',{class:'verdict no'},icon('no'),'Enter a three or six digit hex value, such as 886844.'));
+      return;
+    }
+    const r=ratio(fg,bg);
+    out.textContent=r.toFixed(2)+':1';
+    const rows=[[4.5,'Body text, 4.5:1'],[3,'Large text and icons, 3:1']];
+    rows.forEach(([min,txt])=>{
+      const ok=r>=min;
+      ver.append(h('div',{class:'verdict '+(ok?'ok':'no')},icon(ok?'ok':'no'),(ok?'Clears ':'Misses ')+txt));
+    });
+    pre.style.color='#'+fg; pre.style.background='#'+bg;
+  }
+  function setPair(fg,bg){
+    fgH.value=fg.toUpperCase(); bgH.value=bg.toUpperCase();
+    const a=parseHex(fg), b=parseHex(bg);
+    if(a) fgP.value='#'+a.toLowerCase(); if(b) bgP.value='#'+b.toLowerCase();
+    update();
+  }
+  fgP.addEventListener('input',()=>{ fgH.value=fgP.value.toUpperCase(); update(); });
+  bgP.addEventListener('input',()=>{ bgH.value=bgP.value.toUpperCase(); update(); });
+  fgH.addEventListener('input',()=>{ const v=parseHex(fgH.value); if(v) fgP.value='#'+v.toLowerCase(); update(); });
+  bgH.addEventListener('input',()=>{ const v=parseHex(bgH.value); if(v) bgP.value='#'+v.toLowerCase(); update(); });
+  document.querySelectorAll('.chip[data-fg]').forEach(b=>b.addEventListener('click',()=>setPair(b.dataset.fg,b.dataset.bg)));
+  update();
+}
+
+/* ---------- Filters ---------- */
+const state={q:'',data:'all',area:'all'};
+function visible(rec, text){
+  if(state.data!=='all' && rec.data!==state.data) return false;
+  if(state.area!=='all' && rec.area!==state.area) return false;
+  if(state.q && norm(text).indexOf(state.q)<0) return false;
+  return true;
+}
+const tally={};
+function empty(msgHead,msgBody){ return h('div',{class:'empty'},h('b',{text:msgHead}),msgBody); }
+function fillBody(tbl, rows, cols, emptyEl){
+  const body=tbl.querySelector('tbody'); body.replaceChildren();
+  const wrap=tbl.parentElement;
+  const old=wrap.querySelector('.empty'); if(old) old.remove();
+  tbl.hidden = rows.length===0;
+  if(!rows.length){ wrap.append(emptyEl); return; }
+  rows.forEach(r=>body.append(cols(r)));
+}
+
+function renderGates(){
+  const all=DATA.gates;
+  const rows=all.filter(g=>visible(g,[g.area,g.gate,g.measure,g.basis].join(' ')));
+  tally.gates=[rows.length,all.length];
+  fillBody($('#gateTbl'),rows,g=>h('tr',{class:g.data==='sample'?'is-sample':''},
+    h('td',null,h('span',{class:'area',text:g.area})),
+    h('td',{class:'val',text:g.gate}),
+    h('td',{text:g.measure}),
+    h('td',{class:'area',text:g.basis})),
+    empty('No gates match.','The release build is held to a short list. Widen the filter to see all of it.'));
+}
+
+function renderTests(){
+  const host=$('#testChart');
+  const all=DATA.tests;
+  const rows=all.filter(t=>visible(t,[t.area,t.label,'tests sample'].join(' ')));
+  tally.tests=[rows.length,all.length];
+  if(!rows.length){ host.replaceChildren(empty('No test rows match.','The suite totals 15 tests. The split by area appears when sample data is in view.')); return; }
+  barChart(host,{
+    max:8, ticks:[0,2,4,6,8], lw:'210px',
+    twinHead:['Area','Tests','Data'],
+    rows:rows.map(t=>({label:t.label, sub:'Sample split', value:t.count, valueText:String(t.count), mark:'sample',
+      tip:t.area+'. Sample split of the 15 tests.', twin:[t.label, String(t.count), 'Sample']}))
+  });
+}
+
+function renderDecisions(){
+  const all=DATA.decisions;
+  const rows=all.filter(d=>visible(d,[d.ref,d.title,d.area,d.decision,d.reason,d.rejected,d.reversal].join(' ')));
+  tally.decisions=[rows.length,all.length];
+  fillBody($('#decTbl'),rows,d=>{
+    const tr=h('tr',{class:'clickable'+(d.data==='sample'?' is-sample':'')},
+      h('td',{class:'area',text:d.ref}),
+      h('td',{class:'num',text:d.date||'—'}),
+      h('td',null,h('span',{class:'area',text:d.area})),
+      h('td',null,(function(){ const b=h('button',{class:'rowbtn',type:'button',text:d.title}); b.addEventListener('click',e=>{e.stopPropagation();openDrawer(d,b);}); return b; })()),
+      h('td',null,tag(d.data)));
+    tr.addEventListener('click',()=>openDrawer(d,tr.querySelector('.rowbtn')));
+    return tr;
+  }, empty('No decisions match.','The log keeps each choice, the alternatives rejected and the condition that would reverse it. Widen the filter to read them.'));
+}
+
+function renderFeedback(){
+  const all=DATA.feedback;
+  const rows=all.filter(f=>visible(f,[f.ref,f.type,f.area,f.summary,f.state].join(' ')));
+  tally.feedback=[rows.length,all.length];
+  fillBody($('#fbTbl'),rows,f=>h('tr',{class:f.data==='sample'?'is-sample':''},
+    h('td',{class:'area',text:f.ref}),
+    h('td',{text:f.type}),
+    h('td',null,h('span',{class:'area',text:f.area})),
+    h('td',{text:f.summary}),
+    h('td',null,h('span',{class:'val',text:f.state}))),
+    empty('No feedback matches.','Alpha notes land here after triage. Widen the filter to see them.'));
+  const host=$('#fbChart');
+  if(!rows.length){ host.replaceChildren(empty('Nothing to count.','No feedback in view.')); return; }
+  const counts=STATES.map(s=>({s,n:rows.filter(r=>r.state===s).length}));
+  barChart(host,{
+    max:4, ticks:[0,1,2,3,4], lw:'120px',
+    twinHead:['State','Items','Data'],
+    rows:counts.map(c=>({label:c.s, value:c.n, valueText:String(c.n), mark:'sample',
+      tip:'Sample feedback items in this state.', twin:[c.s,String(c.n),'Sample']}))
+  });
+}
+
+function renderCount(){
+  let shown=0,total=0;
+  Object.keys(tally).forEach(k=>{ shown+=tally[k][0]; total+=tally[k][1]; });
+  $('#count').textContent='Showing '+shown+' of '+total+' rows';
+}
+function renderStatus(){
+  const rows=[].concat(DATA.gates,DATA.tests,DATA.decisions,DATA.feedback);
+  const p=rows.filter(r=>r.data==='project').length, s=rows.length-p;
+  $('#statusText').textContent=p+' rows are project data and '+s+' are sample. Project data comes from the published Noonmark page and the maintainer’s résumé. Sample rows show how each panel reads once the project’s own test list, decision log and alpha ledger are loaded. Nothing here is a commitment beyond what the product page states.';
+}
+function renderAll(){ renderGates(); renderTests(); renderDecisions(); renderFeedback(); renderCount(); }
+
+function wireFilters(){
+  const sel=$('#area');
+  DATA.areas.forEach(a=>sel.append(h('option',{value:a,text:a})));
+  $('#q').addEventListener('input',e=>{ state.q=norm(e.target.value).trim(); renderAll(); });
+  sel.addEventListener('change',e=>{ state.area=e.target.value; renderAll(); });
+  const seg=$('#dataSeg');
+  seg.addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    state.data=b.dataset.v;
+    seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    renderAll();
+  });
+  $('#reset').addEventListener('click',()=>{
+    state.q='';state.data='all';state.area='all';
+    $('#q').value=''; sel.value='all';
+    seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.v==='all')));
+    renderAll();
+  });
+}
+
+/* ---------- Drawer ---------- */
+const drawer=$('#drawer'), veil=$('#veil');
+let lastFocus=null;
+function section(head,text){ return text?h('div',{class:'dsec'},h('h4',{text:head}),h('p',{text:text})):null; }
+function openDrawer(d,from){
+  lastFocus=from||document.activeElement;
+  $('#dKind').textContent='Decision '+d.ref+(d.date?' · '+d.date:'')+' · '+d.area;
+  $('#dTitle').textContent=d.title;
+  const body=$('#dBody'); body.replaceChildren();
+  if(d.data==='sample') body.append(h('div',{class:'note',text:'Sample entry. It shows how a log entry reads. Replace it with the project’s own.'}));
+  [section('Decision',d.decision),section('Reason',d.reason),section('Alternative rejected',d.rejected),
+   section('Fallback',d.fallback),section('Reverse when',d.reversal)].forEach(x=>x&&body.append(x));
+  body.append(h('div',{class:'dsrc',text:d.source?'Source: '+d.source:'Source: sample data'}));
+  veil.hidden=false; drawer.hidden=false;
+  requestAnimationFrame(()=>{ veil.classList.add('open'); drawer.classList.add('open'); $('#dClose').focus(); });
+}
+function closeDrawer(){
+  if(drawer.hidden) return;
+  veil.classList.remove('open'); drawer.classList.remove('open');
+  setTimeout(()=>{ veil.hidden=true; drawer.hidden=true; },190);
+  if(lastFocus&&lastFocus.focus) lastFocus.focus();
+}
+veil.addEventListener('click',closeDrawer);
+$('#dClose').addEventListener('click',closeDrawer);
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') closeDrawer();
+  if(e.key==='Tab' && !drawer.hidden){
+    const f=[...drawer.querySelectorAll('button,[href],input,select,[tabindex]:not([tabindex="-1"])')].filter(n=>!n.disabled);
+    if(!f.length) return;
+    const first=f[0], last=f[f.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+  }
+});
+
+/* ---------- In-page nav ---------- */
+document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',e=>{
+  const t=document.getElementById(a.getAttribute('href').slice(1));
+  if(t){ e.preventDefault(); t.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'}); }
+}));
+
+/* ---------- Boot ---------- */
+renderStatus();
+renderContrastChart();
+wireChecker();
+wireFilters();
+renderAll();
+})();
+</script>
+
+</body>
+</html>
